@@ -6,6 +6,7 @@ const path = require('path');
 const static = require('serve-static');
 const bodyParser = require('body-parser');
 const dbconfig = require('./config/database.json');
+const jwt = require('jsonwebtoken');
 
 //database connection pool
 const pool = mysql.createPool({
@@ -22,55 +23,74 @@ app.use(express.urlencoded({extended: true}));
 app.use(express.json());
 app.use('/public',static(path.join(__dirname,'public')));
 
-app.post('/process/adduser', (req, res) => {
-    console.log('/process/adduser 호출됨'+req);
-    let paramId = req.body.id;
-    let paramPassword = req.body.password;
-    let paramClass = req.body.class;
-
-    pool.getConnection((err, conn) => {
-        if (err){
-            conn.release();
-            console.log('mysql getconnection error');
-            return;
-        }
-
-        const exec = conn.query('insert into users (id, password, class) values (?, ?, ?);',
-                    [paramId, paramPassword, paramClass], 
-                    (err, result) => {
-                        conn.release();
-                        console.log('실행된 sql: '+ exec.sql);
-
-                        if (err){
-                            console.log('sql 실행 시 에러 발생함');
-                            console.dir(err);
-                            return;
-                        }
-
-                        if (result){
-                            console.dir(result);
-                            console.log('inserted 성공');
-                            console.log("성공")
-                            res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
-                            res.write('<h2>회원가입 성공</h2>');
-                            res.end();
-                        }
-                        else{
-                            console.log('실패');
-                            res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
-                            res.write('<h2>회원가입 실패</h2>');
-                            res.end();
-                        }
-                    }
-        )
+app.post('/register', (req, res) =>{
+    console.log('post 인식');
+    const body = req.body;
+    const id = body.id;
+    const pw = body.pw;
+    const classes = body.classes;
+    console.log(id,pw,classes);
+  
+    pool.query('select * from user where id=?',[id],(err,data)=>{
+      if(data.length == 0){
+          console.log('회원가입 성공');
+          pool.query('insert into user(id, password, classes) values(?,?,?)',[id,pw,classes],(err,data)=>{
+          
+          res.status(200).json(
+            {
+              "message" : true
+            }
+          );
+          });
+      }else{
+          console.log('회원가입 실패');
+          res.status(200).json(
+            {
+              "message" : false
+            }
+          );
+          
+      }
+      
     });
+  });
+
+app.get('/users_info', (req, res) => {
+  pool.query('SELECT * FROM User', (error, rows) => {
+    if(error) throw error;
+    console.log('user info is : ', rows);
+    
+    res.status(200).send(rows)
+    
+  });
+});
+
+app.post('/login', (req, res)=>{
+  const body = req.body;
+  const id = body.id;
+  const pw = body.pw;
+  
+  pool.query('select id, password from user where id=? and password=?', [id,pw], (err, data)=>{
+    if(data.length == 0){ // 로그인 실패
+      console.log('로그인 실패');
+      res.status(200).json(
+        {
+          "UID" : -1
+        }
+      )
+    }
+    else{
+      // 로그인 성공
+      console.log('로그인 성공');
+      pool.query('select id from user where id=?',[id],(err,data)=>{
+        res.status(200).send(data[0]); 
+      });
+      
+    }
+  });
 
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'adduser.html'));
-});
-
-app.listen(3000, () => {
+app.listen(4000, () => {
     console.log('server is running');
 });
