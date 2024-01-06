@@ -55,16 +55,6 @@ app.post('/register', (req, res) =>{
     });
   });
 
-app.get('/users_info', (req, res) => {
-  pool.query('SELECT * FROM User', (error, rows) => {
-    if(error) throw error;
-    console.log('user info is : ', rows);
-    
-    res.status(200).send(rows)
-    
-  });
-});
-
 app.post('/login', (req, res)=>{
   const body = req.body;
   const id = body.id;
@@ -73,11 +63,7 @@ app.post('/login', (req, res)=>{
   pool.query('select id, password from user where id=? and password=?', [id,pw], (err, data)=>{
     if(data.length == 0){ // 로그인 실패
       console.log('로그인 실패');
-      res.status(200).json(
-        {
-          "UID" : -1
-        }
-      )
+      res.status(200).send("");
     }
     else{
       // 로그인 성공
@@ -90,6 +76,56 @@ app.post('/login', (req, res)=>{
   });
 
 });
+
+app.post('/login/idcert', (req, res) =>{
+  console.log('/login/idcert의 post 인식');
+  const body = req.body;
+  const id = body.id;
+
+  pool.query('select * from user where id=?',[id],(err,data)=>{
+    if(data.length == 0){
+        console.log('중복 아이디 없음');
+        res.status(200).json(
+          {
+            "isExist" : false
+          }
+        );
+    }else{
+        console.log('중복 아이디 있음');
+        res.status(200).json(
+          {
+            "isExist" : true
+          }
+        );
+    }
+  });
+});
+
+//게시판 목록
+app.get('/boardclass', (req, res) => {
+  pool.query('SELECT * FROM board', (err, data) => {
+      if (err) {
+          res.status(500).send(err);
+      } else {
+          res.status(200).json(data);
+      }
+  });
+});
+
+// 게시글 목록
+app.post('/getBoardPosts', (req, res) => {
+  const selectedBoard = req.body.boardName; // 클라이언트에서 선택한 게시판 이름
+
+  pool.query('SELECT * FROM bulletin WHERE board = ?', [selectedBoard], (err, data) => {
+      if (err) {
+          res.status(500).send(err);
+      } else {
+          res.status(200).json(data);
+      }
+  });
+});
+
+
 
 app.listen(4000, () => {
     console.log('server is running');
