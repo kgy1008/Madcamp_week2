@@ -156,7 +156,31 @@ app.post('/boardclass/create', (req, res) => {
 app.post('/board', (req, res) => {
   const selectedBoard = req.body.name; // 클라이언트에서 선택한 게시판 이름
 
-  pool.query('SELECT author,title,context,board FROM posts WHERE board = ?', [selectedBoard], (err, data) => {
+  pool.query('SELECT _id,author,title,context FROM posts WHERE board = ?', [selectedBoard], (err, data) => {
+      if (err) {
+          res.status(500).send(err);
+      } else {
+          res.status(200).json(data);
+      }
+  });
+});
+
+app.post('/checkedboardclass', (req, res) => {
+  const selectedBoardID = req.body.id; 
+
+  pool.query('SELECT user,name FROM star WHERE user = ?', [selectedBoardID], (err, data) => {
+      if (err) {
+          res.status(500).send(err);
+      } else {
+          res.status(200).json(data);
+      }
+  });
+});
+
+app.post('/getcomments', (req, res) => {
+  const selectedPostID = req.body._id; 
+
+  pool.query('SELECT writer,context FROM comment WHERE _id = ?', [selectedPostID], (err, data) => {
       if (err) {
           res.status(500).send(err);
       } else {
