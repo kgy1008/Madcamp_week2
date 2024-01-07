@@ -33,7 +33,7 @@ app.post('/register', (req, res) =>{
     pool.query('select * from user where id=?',[id],(err,data)=>{
       if(data.length == 0){
           console.log('회원가입 성공');
-          pool.query('insert into user(id, password, classes, nickname) values(?,?,?,?)',[id,pw,classes,id],(err,data)=>{
+          pool.query('INSERT INTO user(id, password, classes, nickname) values(?,?,?,?)',[id,pw,classes,id],(err,data)=>{
           
           res.status(200).json(
             {
@@ -176,22 +176,33 @@ app.post('/getcomments', (req, res) => {
 app.post('/kakaologin', (req, res) => {
   const body = req.body;
   const id = body.id;
-  const nickname = body.nickname;
-  const profile = body.profile;
 
-  pool.query('INSERT INTO user (id, image, nickname) VALUES (?, ?, ?)', [id, profile, nickname], (err, data) => {
-    if (err) {
+  pool.query('SELECT id from user WHERE id = ?', [id], (err, data) => {
+    if (data.length != 0) {
       console.error(err);
-      if (err.code === 'ER_DUP_ENTRY') {
         console.log('이미 존재하는 아이디입니다.');
         res.status(200).json({"message": true});
-      }
     } else {
-      console.log('카카오 회원가입 성공');
+      console.log('존재하지 않는 아이디입니다 -> 새로운 페이지 이동');
       res.status(200).json({"success": false});
     }
   });
 
+});
+
+app.post('/kakaoregister', (req, res) => {
+  const userID = req.body.id; 
+  const userProfile = req.body.profile;
+  const userClass = req.body.classes;
+  const userNickname = req.body.nickname;
+  console.log(userID,userProfile,userClass,userNickname);
+  pool.query('INSERT INTO user(id, image, classes, nickname) values(?,?,?,?)', [userID,userProfile,userClass,userNickname], (err, data) => {
+      if (err) {
+          res.status(500).json({"message": false});
+      } else {
+          res.status(200).json({"message": true});
+      }
+  });
 });
 
 
