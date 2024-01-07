@@ -26,14 +26,14 @@ app.post('/register', (req, res) =>{
     console.log('post 인식');
     const body = req.body;
     const id = body.id;
-    const pw = body.pw;
+    const pw = body.password;
     const classes = body.classes;
     console.log(id,pw,classes);
   
     pool.query('select * from user where id=?',[id],(err,data)=>{
       if(data.length == 0){
           console.log('회원가입 성공');
-          pool.query('insert into user(id, password, classes) values(?,?,?)',[id,pw,classes],(err,data)=>{
+          pool.query('insert into user(id, password, classes, nickname) values(?,?,?,?)',[id,pw,classes,id],(err,data)=>{
           
           res.status(200).json(
             {
@@ -59,17 +59,16 @@ app.post('/login', (req, res)=>{
   const id = body.id;
   const pw = body.pw;
   
-  pool.query('select id, password from user where id=? and password=?', [id,pw], (err, data)=>{
+  pool.query('select nickname,image from user where id=? and password=?', [id,pw], (err, data)=>{
     if(data.length == 0){ // 로그인 실패
       console.log('로그인 실패');
-      res.status(200).json({token:"",id:""});
+      res.status(200).json({"nickname" : data[0].nickname, "image": data[0].image});
     }
     else{
       // 로그인 성공
       console.log('로그인 성공');
-      pool.query('select id from user where id=?',[id],(err,data)=>{
-        const token = jwt.sign({ id }, 'your_secret_key', { expiresIn: '1h' }); // 토큰 생성
-        res.status(200).json({ token, id });
+      pool.query('select nickname,image from user where id=?',[id],(err,data)=>{
+        res.status(200).json({"nickname" : data[0].nickname, "image": data[0].image});
       });
       
     }
@@ -77,21 +76,6 @@ app.post('/login', (req, res)=>{
 
 });
 
-function verifyToken(req, res, next) {
-  const token = req.headers['authorization'];
-
-  if (!token) {
-    return res.status(403).json({ message: '토큰이 제공되지 않았습니다.' });
-  }
-
-  jwt.verify(token, 'your_secret_key', (err, decoded) => {
-    if (err) {
-      return res.status(401).json({ message: '유효하지 않은 토큰입니다.' });
-    }
-    req.userId = decoded.id;
-    next();
-  });
-}
 
 app.post('/login/idcert', (req, res) =>{
   console.log('/login/idcert의 post 인식');
@@ -187,6 +171,27 @@ app.post('/getcomments', (req, res) => {
           res.status(200).json(data);
       }
   });
+});
+
+app.post('/kakaologin', (req, res) => {
+  const body = req.body;
+  const id = body.id;
+  const nickname = body.nickname;
+  const profile = body.profile;
+
+  pool.query('INSERT INTO user (id, image, nickname) VALUES (?, ?, ?)', [id, profile, nickname], (err, data) => {
+    if (err) {
+      console.error(err);
+      if (err.code === 'ER_DUP_ENTRY') {
+        console.log('이미 존재하는 아이디입니다.');
+        res.status(200).json({"message": true});
+      }
+    } else {
+      console.log('카카오 회원가입 성공');
+      res.status(200).json({"success": false});
+    }
+  });
+
 });
 
 
