@@ -54,7 +54,7 @@ app.post('/register', (req, res) =>{
     });
   });
 
-app.post('/login', (req, res)=>{
+app.post('/login', (req, res)=>{ //로그인
   const body = req.body;
   const id = body.id;
   const pw = body.pw;
@@ -67,8 +67,8 @@ app.post('/login', (req, res)=>{
     else{
       // 로그인 성공
       console.log('로그인 성공');
-      pool.query('select nickname,image from user where id=?',[id],(err,data)=>{
-        res.status(200).json({"nickname" : data[0].nickname, "image": data[0].image});
+      pool.query('select nickname,image,id from user where id=?',[id],(err,data)=>{
+        res.status(200).json({"nickname" : data[0].nickname, "image": data[0].image, "id": data[0].id});
       });
       
     }
@@ -77,7 +77,7 @@ app.post('/login', (req, res)=>{
 });
 
 
-app.post('/login/idcert', (req, res) =>{
+app.post('/login/idcert', (req, res) =>{  // id 중복 체크
   console.log('/login/idcert의 post 인식');
   const body = req.body;
   const id = body.id;
@@ -112,7 +112,7 @@ app.get('/boardclass', (req, res) => {
   });
 });
 
-app.post('/boardclass/create', (req, res) => {
+app.post('/boardclass/create', (req, res) => { //게시판 생성
   const newBoardName = req.body.newtitle;
   const creator = req.body.creater;
 
@@ -138,9 +138,9 @@ app.post('/boardclass/create', (req, res) => {
 
 // 게시글 목록
 app.post('/board', (req, res) => {
-  const selectedBoard = req.body.name; // 클라이언트에서 선택한 게시판 이름
+  const selectedBoard = req.body.name; 
 
-  pool.query('SELECT _id,author,title,context FROM posts WHERE board = ?', [selectedBoard], (err, data) => {
+  pool.query('SELECT _id,author,title,context,author_nickname FROM posts WHERE board = ?', [selectedBoard], (err, data) => {
       if (err) {
           res.status(500).send(err);
       } else {
@@ -149,7 +149,7 @@ app.post('/board', (req, res) => {
   });
 });
 
-app.post('/checkedboardclass', (req, res) => {
+app.post('/checkedboardclass', (req, res) => { // 즐겨찾기 게시판
   const selectedBoardID = req.body.id; 
 
   pool.query('SELECT user,name FROM star WHERE user = ?', [selectedBoardID], (err, data) => {
@@ -161,10 +161,10 @@ app.post('/checkedboardclass', (req, res) => {
   });
 });
 
-app.post('/getcomments', (req, res) => {
+app.post('/getcomments', (req, res) => { //댓글 가져오기
   const selectedPostID = req.body._id; 
 
-  pool.query('SELECT writer,context FROM comment WHERE _id = ?', [selectedPostID], (err, data) => {
+  pool.query('SELECT _id,writer,context,writer_nickname FROM comment WHERE title = ?', [selectedPostID], (err, data) => {
       if (err) {
           res.status(500).send(err);
       } else {
@@ -173,8 +173,8 @@ app.post('/getcomments', (req, res) => {
   });
 });
 
-app.post('/kakaologin', (req, res) => {
-  const body = req.body;
+app.post('/kakaologin', (req, res) => { //카카오 로그인
+  const body = req.body; 
   const id = body.id;
 
   pool.query('SELECT id from user WHERE id = ?', [id], (err, data) => {
@@ -190,7 +190,7 @@ app.post('/kakaologin', (req, res) => {
 
 });
 
-app.post('/kakaoregister', (req, res) => {
+app.post('/kakaoregister', (req, res) => { //카카오 회원가입
   const userID = req.body.id; 
   const userProfile = req.body.profile;
   const userClass = req.body.classes;
@@ -205,7 +205,115 @@ app.post('/kakaoregister', (req, res) => {
   });
 });
 
+app.post('/createboard', (req, res) => { //게시글 생성
+  const author = req.body.author; 
+  const postTitle = req.body.title;
+  const postContext = req.body.context;
+  const boardClass = req.body.boardclass;
+  const authorNickname = req.body.author_nickname;
 
+  console.log(author,postTitle,postContext,boardClass,authorNickname);
+
+  pool.query('INSERT INTO posts(author, title, context, board, author_nickname) values(?,?,?,?,?)', [author,postTitle,postContext,boardClass,authorNickname], (err, data) => {
+      if (err) {
+          res.status(500).json({"message": false});       
+      } else {
+          res.status(200).json({"message": true});
+      }
+  });
+});
+
+app.post('/createcomment', (req, res) => { //댓글 작성
+  const boardID = req.body._id;
+  const commentWriter = req.body.writer;
+  const commentContext = req.body.context;
+  const commentNickname = req.body.writer_nickname;
+
+  console.log(boardID,commentWriter,commentContext,commentNickname);
+
+  pool.query('INSERT INTO comment (writer, context, title, writer_nickname) VALUES (?, ?, ?, ?)', [commentWriter,commentContext, boardID,commentNickname], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+    } else {
+      console.log('댓글 작성 성공');
+      res.status(200).json({"message": true });
+    }
+  });
+
+});
+
+app.post('/deletecomment', (req, res) => { //댓글 삭제
+  const commentID = req.body._id;
+
+  console.log(commentID);
+
+  pool.query('DELETE FROM comment WHERE _id = ?', [commentID], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+    } else {
+      console.log('댓글 삭제 성공');
+      res.status(200).json({"message": true });
+    }
+  });
+
+});
+
+app.post('/updatecomment', (req, res) => { //댓글 수정
+  const commentID = req.body._id;
+  const commenttext = req.body.context;
+
+  console.log(commentID,commenttext);
+
+  pool.query('UPDATE comment SET context = ? WHERE _id = ?', [commenttext,commentID], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+    } else {
+      console.log('댓글 수정 성공');
+      res.status(200).json({"message": true });
+    }
+  }
+  );
+});
+
+app.post('/updatepost', (req, res) => { //게시글 수정
+  const postID = req.body._id;
+  const postTitle = req.body.title;
+  const posttext = req.body.context;
+
+  console.log(postID,postTitle,posttext);
+
+  pool.query('UPDATE posts SET context = ?, title = ? WHERE _id = ?', [posttext, postTitle, postID], (err, data) => {
+    if (err) {
+      console.log('게시글 수정 실패');
+      console.error(err);
+      res.status(500).json({ "message": false });
+    } else {
+      console.log('게시글 수정 성공');
+      res.status(200).json({ "message": true });
+    }
+  });
+});
+
+
+app.post('/deletepost', (req, res) => { //게시글 삭제
+  const postID = req.body._id;
+
+  console.log(postID);
+
+  pool.query('DELETE FROM posts WHERE _id = ?', [postID], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+    } else {
+      console.log('게시글 삭제 성공');
+      res.status(200).json({"message": true });
+    }
+  }
+  );
+});
 
 app.listen(4000, () => {
     console.log('server is running');
