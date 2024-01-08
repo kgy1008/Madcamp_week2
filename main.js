@@ -102,15 +102,27 @@ app.post('/login/idcert', (req, res) =>{  // id 중복 체크
 });
 
 //게시판 목록
-app.get('/boardclass', (req, res) => {
-  pool.query('SELECT * FROM board', (err, data) => {
-      if (err) {
-          res.status(500).send(err);
-      } else {
-          res.status(200).json(data);
-      }
+app.post('/boardclass', (req, res) => {
+  const userID = req.body.user_id;
+  pool.query('SELECT name FROM star WHERE user = ?', [userID], (err, starData) => {
+    if (err) {
+        res.status(500).send(err);
+    } else {
+        pool.query('SELECT * FROM board', (err, boardData) => {
+            if (err) {
+                res.status(500).send(err);
+            } else {
+                const starNames = starData.map(data => data.name);
+                const boardDataWithStar = boardData.map(data => {
+                    return {...data, pinned: starNames.includes(data.name)};
+                });
+                res.status(200).json(boardDataWithStar);
+            }
+        });
+    }
   });
 });
+
 
 app.post('/boardclass/create', (req, res) => { //게시판 생성
   const newBoardName = req.body.newtitle;
@@ -314,6 +326,63 @@ app.post('/deletepost', (req, res) => { //게시글 삭제
   }
   );
 });
+
+app.post('/myboardclass',(req,res)=>{ //내가 만든 게시판
+  const author = req.body.user_id;
+
+  pool.query('SELECT name FROM board WHERE creater = ?', [author], (err, data) => {
+    if (err) {
+        res.status(500).send(err);
+    } else {
+        res.status(200).json(data);
+    }
+  });
+});
+
+app.post('/deleteboardclass', (req, res) => { //게시판 삭제
+  const boardName = req.body.name;
+
+  console.log(boardName);
+
+  pool.query('DELETE FROM board WHERE name = ?', [boardName], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+    } else {
+      console.log('게시판 삭제 성공');
+      res.status(200).json({"message": true });
+    }
+  });
+});
+
+app.post('/pinboardclass', (req, res) => { // 즐겨찾기 게시판 추가 및 삭제
+  const pin = req.body.pinned;
+  const userID = req.body.user_id;
+  const boardName = req.body.boardclass;
+
+  if (pin) { // 즐겨찾기 추가
+    pool.query('INSERT INTO star (user, name) VALUES (?, ?)', [userID, boardName], (err, data) => {
+      if (err) {
+        console.error('즐겨찾기 추가 실패:', err);
+        res.status(500).json({ "message": "Error adding to favorites" });
+      } else {
+        console.log('즐겨찾기 추가 성공');
+        res.status(200).json({ "message": true });
+      }
+    });
+  } else { // 즐겨찾기 삭제
+    pool.query('DELETE FROM star WHERE user = ? AND name = ?', [userID, boardName], (err, data) => {
+      if (err) {
+        console.error('즐겨찾기 삭제 실패:', err);
+        res.status(500).json({ "message": "Error removing from favorites" });
+      } else {
+        console.log('즐겨찾기 삭제 성공');
+        res.status(200).json({ "message": true });
+      }
+    });
+  }
+});
+
 
 app.listen(4000, () => {
     console.log('server is running');
