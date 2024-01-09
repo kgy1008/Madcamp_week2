@@ -5,6 +5,7 @@ const url = require('url');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 
 //database connection pool
 const pool = mysql.createPool({
@@ -61,38 +62,40 @@ app.post('/register', (req, res) =>{
     });
   });
 
-app.post('/login', (req, res)=>{ //로그인
-  const body = req.body;
-  const id = body.id;
-  const pw = body.pw;
+  app.post('/login', (req, res) => {
+    const body = req.body;
+    const id = body.id;
+    const pw = body.pw;
   
-  console.log(id,pw);
-
-  pool.query('select nickname,image,id from user where id=? and password=?', [id,pw], (err, data)=>{
-    console.log(data);
-    if(!data || data.length == 0){ // 로그인 실패
-      console.log('로그인 실패');
-      res.status(200).json({"id": ""});
-    }
-    else {
-      const imagePath = data[0].image; // 이미지 경로를 가져옵니다.
-      fs.readFile(imagePath, { encoding: 'base64' }, (err, imageFile) => {
-        if (err) {
-          console.log('이미지 읽기 실패');
-          res.status(500).send('Internal Server Error');
-        } else {
-          // 이미지를 Base64 문자열로 인코딩하여 전송합니다.
+    console.log(id, pw);
+  
+    pool.query('select nickname,image,id,classes from user where id=? and password=?', [id, pw], (err, data) => {
+      console.log(data);
+      if (!data || data.length == 0) { // 로그인 실패
+        console.log('로그인 실패');
+        res.status(200).json({"id": ""});
+      } else {
+        if (data[0].image != null) {
           res.status(200).json({
-            "nickname": data[0].nickname, 
-            "image": imageFile, // Base64 인코딩된 이미지 데이터
-            "id": data[0].id
+            "nickname": data[0].nickname,
+            "image": data[0].image, // 이미지가 있을 경우 이미지 전송
+            "id": data[0].id,
+            "classes": data[0].classes
+          });
+        } else {
+          // 이미지가 없는 경우
+          res.status(200).json({
+            "nickname": data[0].nickname,
+            "image": "", // 이미지가 없으므로 빈 문자열 전송
+            "id": data[0].id,
+            "classes": data[0].classes
           });
         }
-      });
-    }
+      }
+    });
   });
-
-});
+  
+  
 
 
 app.post('/login/idcert', (req, res) => {  // id 중복 체크
@@ -178,9 +181,9 @@ app.post('/board', (req, res) => {
 });
 
 app.post('/checkedboardclass', (req, res) => { // 즐겨찾기 게시판
-  const selectedBoardID = req.body.id; 
+  const userID = req.body.id; 
 
-  pool.query('SELECT user,name FROM star WHERE user = ?', [selectedBoardID], (err, data) => {
+  pool.query('SELECT name FROM star WHERE user = ?', [userID], (err, data) => {
       if (err) {
           res.status(500).send(err);
       } else {
@@ -189,7 +192,7 @@ app.post('/checkedboardclass', (req, res) => { // 즐겨찾기 게시판
   });
 });
 
-app.post('/getcomments', (req, res) => { //댓글 가져오기
+app.post('/getcomments', (req, res) => { // 댓글 목록
   const selectedPostID = req.body._id;  // post의 기본키
 
   const query = `
@@ -200,47 +203,83 @@ app.post('/getcomments', (req, res) => { //댓글 가져오기
     WHERE comment.title = ?
   `;
 
-  pool.query(query, [selectedPostID], (err, data) => {
-      if (err) {
-          res.status(500).send(err);
-      } else {
-          res.status(200).json(data);
+  pool.query(query, [selectedPostID], async (err, comments) => {
+    if (err) {
+      res.status(500).send(err);
+    } else {
+      try {
+        for (const comment of comments) {
+          // user.image가 NULL이 아닐 경우에만 인코딩을 진행합니다.
+          if (!comment.image) {
+            comment.image = "";
+          }
+        }
+        res.status(200).json(comments);
+      } catch (error) {
+        console.error('File read error', error);
+        res.status(500).send('Error processing images');
       }
+    }
   });
 });
-
 
 app.post('/kakaologin', (req, res) => { //카카오 로그인
   const body = req.body; 
   const id = body.id;
 
-  pool.query('SELECT id from user WHERE id = ?', [id], (err, data) => {
+  console.log(id);
+
+  pool.query('SELECT id,nickname,image,classes from user WHERE id = ?', [id], (err, data) => {
     if (data.length != 0) {
       console.error(err);
         console.log('이미 존재하는 아이디입니다.');
-        res.status(200).json({"message": true});
+        res.status(200).json(data[0]);
     } else {
       console.log('존재하지 않는 아이디입니다 -> 새로운 페이지 이동');
-      res.status(200).json({"success": false});
+      res.status(200).json({"id":""});
     }
   });
-
 });
 
-app.post('/kakaoregister', (req, res) => { //카카오 회원가입
+async function encodeImageToBase64(url) {
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer' // 이미지 데이터를 arraybuffer 형태로 받습니다.
+    });
+
+    // Buffer 객체를 생성하고, 이를 Base64로 인코딩합니다.
+    const base64 = Buffer.from(response.data, 'binary').toString('base64');
+
+    return base64;
+  } catch (error) {
+    console.error('Error downloading or encoding image:', error);
+    return null;
+  }
+}
+
+app.post('/kakaoregister', async (req, res) => { //카카오 회원가입
   const userID = req.body.id; 
   const userProfile = req.body.profile;
   const userClass = req.body.classes;
   const userNickname = req.body.nickname;
+
   console.log(userID,userProfile,userClass,userNickname);
-  pool.query('INSERT INTO user(id, image, classes, nickname) values(?,?,?,?)', [userID,userProfile,userClass,userNickname], (err, data) => {
-      if (err) {
-          res.status(500).json({"message": false});
-      } else {
-          res.status(200).json({"message": true});
-      }
-  });
+
+  try {
+    const base64 = await encodeImageToBase64(userProfile); // Base64 인코딩을 기다립니다.
+
+    pool.query('INSERT INTO user(id, image, classes, nickname) values(?,?,?,?)', [userID, base64, userClass, userNickname], (err, data) => {
+        if (err) {
+            res.status(500).json({"message": false});
+        } else {
+            res.status(200).json({"message": true});
+        }
+    });
+  } catch (error) {
+    res.status(500).send('Internal Server Error');
+  }
 });
+
 
 app.post('/createboard', (req, res) => { //게시글 생성
   const author = req.body.author; 
@@ -353,7 +392,7 @@ app.post('/deletepost', (req, res) => { //게시글 삭제
 });
 
 app.post('/myboardclass',(req,res)=>{ //내가 만든 게시판
-  const author = req.body.user_id;
+  const author = req.body.id;
 
   pool.query('SELECT name FROM board WHERE creater = ?', [author], (err, data) => {
     if (err) {
@@ -425,29 +464,106 @@ app.post('/changepassword', (req, res) => { //비밀번호 변경
   });
 });
 
-app.post('/changeprofile', upload.single('file'),(req, res) => { //프로필 변경
+app.post('/changeprofile', upload.single('file'), (req, res) => {
   const userID = req.body.id;
   const file = req.file;
-  const filePath = `uploads/${req.file.filename}`;
 
   if (!file) {
     return res.status(400).send('No file uploaded');
   }
 
+  const filePath = `uploads/${file.filename}`;
   console.log(userID, filePath);
 
-  pool.query('UPDATE user SET image = ? WHERE id = ?', [filePath, userID], (err, data) => {
+  fs.readFile(filePath, { encoding: 'base64' }, (err, imageBase64) => {
+    if (err) {
+      console.error('Error reading file', err);
+      return res.status(500).send('Error processing file');
+    }
+
+    pool.query('UPDATE user SET image = ? WHERE id = ?', [imageBase64, userID], (err, data) => {
+      if (err) {
+        console.error('Database error', err);
+        res.status(500).send('Database error');
+      } else {
+        res.status(200).json({ "image": imageBase64 });
+      }
+    });
+  });
+});
+
+app.post('/signout', (req, res) => { //회원탈퇴
+  const userID = req.body.id;
+
+  pool.query('DELETE FROM user WHERE id = ?', [userID], (err, data) => {
     if (err) {
       console.log('실패');
       console.error(err);
-      res.status(500).send('Database error');
-      return;
+      res.status(500).json({ "message": false });
     } else {
-      console.log('프로필 변경 성공');
-      res.sendFile(path.join(__dirname, filePath));
+      console.log('회원탈퇴 성공');
+      res.status(200).json({ "message": true });
+    }
+  }
+  );
+});
+
+app.post('/myboard', (req, res) => { //내가 만든 게시글
+  const author = req.body.id;  // 작성자ID
+
+  console.log(author);
+
+  pool.query('SELECT _id,author,title,context,author_nickname FROM posts WHERE author = ?', [author], (err, data) => {
+      if (err) {
+          res.status(500).send(err);
+      } else {
+          res.status(200).json(data);
+      }
+  });
+});
+
+app.post('/mycomment', (req, res) => { // 댓글 목록
+  const writer = req.body.id;  // 작성자ID
+
+  console.log(writer);
+
+  const query = `
+    SELECT comment._id, comment.writer, comment.context, comment.writer_nickname, user.image 
+    FROM comment 
+    INNER JOIN user 
+    ON comment.writer = user.id 
+    WHERE comment.writer = ?
+  `;
+
+  pool.query(query, [writer], (err, results) => {
+   if (err){
+    res.status(500).send(err);
+   }
+   else{
+    res.status(200).json(results);
+   }
+  });
+});
+
+app.post('/editnickname', (req, res) => { //닉네임 변경
+  const userID = req.body.id;
+  const newNickname = req.body.nickname;
+
+  console.log(userID, newNickname);
+
+  pool.query('UPDATE user SET nickname = ? WHERE id = ?', [newNickname, userID], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+      res.status(500).json({ "message": false });
+    } else {
+      console.log('닉네임 변경 성공');
+      res.status(200).json({ "message": true });
     }
   });
 });
+
+
 
 
 app.listen(4000, () => {
