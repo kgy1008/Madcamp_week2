@@ -6,6 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const { runInNewContext } = require('vm');
 
 //database connection pool
 const pool = mysql.createPool({
@@ -392,7 +393,7 @@ app.post('/deletepost', (req, res) => { //게시글 삭제
 });
 
 app.post('/myboardclass',(req,res)=>{ //내가 만든 게시판
-  const author = req.body.id;
+  const author = req.body.user_id;
 
   pool.query('SELECT name FROM board WHERE creater = ?', [author], (err, data) => {
     if (err) {
@@ -509,9 +510,7 @@ app.post('/signout', (req, res) => { //회원탈퇴
 });
 
 app.post('/myboard', (req, res) => { //내가 만든 게시글
-  const author = req.body.id;  // 작성자ID
-
-  console.log(author);
+  const author = req.body.id; 
 
   pool.query('SELECT _id,author,title,context,author_nickname FROM posts WHERE author = ?', [author], (err, data) => {
       if (err) {
@@ -524,8 +523,6 @@ app.post('/myboard', (req, res) => { //내가 만든 게시글
 
 app.post('/mycomment', (req, res) => { // 댓글 목록
   const writer = req.body.id;  // 작성자ID
-
-  console.log(writer);
 
   const query = `
     SELECT comment._id, comment.writer, comment.context, comment.writer_nickname, user.image 
@@ -549,8 +546,6 @@ app.post('/editnickname', (req, res) => { //닉네임 변경
   const userID = req.body.id;
   const newNickname = req.body.nickname;
 
-  console.log(userID, newNickname);
-
   pool.query('UPDATE user SET nickname = ? WHERE id = ?', [newNickname, userID], (err, data) => {
     if (err) {
       console.log('실패');
@@ -563,6 +558,27 @@ app.post('/editnickname', (req, res) => { //닉네임 변경
   });
 });
 
+app.post('/getauthorimage', (req, res) => { //작성자 프로필 이미지 불러오기
+  const authorID = req.body.id; // 작성자 ID
+
+  const query = `
+  SELECT user.image 
+  FROM user
+  INNER JOIN posts 
+  ON posts.author = user.id 
+  WHERE posts.author= ?
+`;
+pool.query(query, [authorID], (err, results) => {
+  if (err){
+   res.status(500).send(err);
+  }
+  else{
+    console.log(results);
+   res.status(200).json(results[0]);
+  }
+ });
+
+});
 
 
 
