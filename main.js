@@ -1,12 +1,10 @@
 const express = require('express');
 const mysql = require('mysql2');
-const fs = require('fs');
-const cors = require('cors');
-const path = require('path');
-const static = require('serve-static');
-const bodyParser = require('body-parser');
 const dbconfig = require('./config/database.json');
-const jwt = require('jsonwebtoken');
+const url = require('url');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 //database connection pool
 const pool = mysql.createPool({
@@ -17,6 +15,17 @@ const pool = mysql.createPool({
     database: dbconfig.database,
     debug: false
 });
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ storage: storage });
 
 const app = express();
 app.use(express.urlencoded({extended: true}));
@@ -31,7 +40,7 @@ app.post('/register', (req, res) =>{
     console.log(id,pw,classes);
   
     pool.query('select * from user where id=?',[id],(err,data)=>{
-      if(data.length == 0){
+      if(!data || data.length == 0){
           console.log('회원가입 성공');
           pool.query('INSERT INTO user(id, password, classes, nickname) values(?,?,?,?)',[id,pw,classes,id],(err,data)=>{
           
@@ -47,10 +56,8 @@ app.post('/register', (req, res) =>{
             {
               "message" : false
             }
-          );
-          
+          ); 
       }
-      
     });
   });
 
@@ -59,47 +66,56 @@ app.post('/login', (req, res)=>{ //로그인
   const id = body.id;
   const pw = body.pw;
   
-  pool.query('select nickname,image from user where id=? and password=?', [id,pw], (err, data)=>{
-    if(data.length == 0){ // 로그인 실패
+  console.log(id,pw);
+
+  pool.query('select nickname,image,id from user where id=? and password=?', [id,pw], (err, data)=>{
+    console.log(data);
+    if(!data || data.length == 0){ // 로그인 실패
       console.log('로그인 실패');
-      res.status(200).json({"nickname" : data[0].nickname, "image": data[0].image});
+      res.status(200).json({"id": ""});
     }
-    else{
-      // 로그인 성공
-      console.log('로그인 성공');
-      pool.query('select nickname,image,id from user where id=?',[id],(err,data)=>{
-        res.status(200).json({"nickname" : data[0].nickname, "image": data[0].image, "id": data[0].id});
+    else {
+      const imagePath = data[0].image; // 이미지 경로를 가져옵니다.
+      fs.readFile(imagePath, { encoding: 'base64' }, (err, imageFile) => {
+        if (err) {
+          console.log('이미지 읽기 실패');
+          res.status(500).send('Internal Server Error');
+        } else {
+          // 이미지를 Base64 문자열로 인코딩하여 전송합니다.
+          res.status(200).json({
+            "nickname": data[0].nickname, 
+            "image": imageFile, // Base64 인코딩된 이미지 데이터
+            "id": data[0].id
+          });
+        }
       });
-      
     }
   });
 
 });
 
 
-app.post('/login/idcert', (req, res) =>{  // id 중복 체크
+app.post('/login/idcert', (req, res) => {  // id 중복 체크
   console.log('/login/idcert의 post 인식');
-  const body = req.body;
-  const id = body.id;
-
-  pool.query('select * from user where id=?',[id],(err,data)=>{
-    if(data.length == 0){
-        console.log('중복 아이디 없음');
-        res.status(200).json(
-          {
-            "isExist" : false
-          }
-        );
-    }else{
-        console.log('중복 아이디 있음');
-        res.status(200).json(
-          {
-            "isExist" : true
-          }
-        );
+  const id = req.body.id;
+  console.log(id);
+  
+  pool.query('SELECT * FROM user WHERE id=?', [id], (err, data) => {
+    if (err) {
+      console.error('Query Error: ', err);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+    
+    if (!data || data.length == 0) {
+      console.log('중복 아이디 없음');
+      res.status(200).json({ "isExist": false });
+    } else {
+      console.log('중복 아이디 있음');
+      res.status(200).json({ "isExist": true });
     }
   });
 });
+
 
 //게시판 목록
 app.post('/boardclass', (req, res) => {
@@ -174,9 +190,17 @@ app.post('/checkedboardclass', (req, res) => { // 즐겨찾기 게시판
 });
 
 app.post('/getcomments', (req, res) => { //댓글 가져오기
-  const selectedPostID = req.body._id; 
+  const selectedPostID = req.body._id;  // post의 기본키
 
-  pool.query('SELECT _id,writer,context,writer_nickname FROM comment WHERE title = ?', [selectedPostID], (err, data) => {
+  const query = `
+    SELECT comment._id, comment.writer, comment.context, comment.writer_nickname, user.image 
+    FROM comment 
+    INNER JOIN user 
+    ON comment.writer = user.id 
+    WHERE comment.title = ?
+  `;
+
+  pool.query(query, [selectedPostID], (err, data) => {
       if (err) {
           res.status(500).send(err);
       } else {
@@ -184,6 +208,7 @@ app.post('/getcomments', (req, res) => { //댓글 가져오기
       }
   });
 });
+
 
 app.post('/kakaologin', (req, res) => { //카카오 로그인
   const body = req.body; 
@@ -381,6 +406,47 @@ app.post('/pinboardclass', (req, res) => { // 즐겨찾기 게시판 추가 및 
       }
     });
   }
+});
+
+app.post('/changepassword', (req, res) => { //비밀번호 변경
+  const userID = req.body.id;
+  const oldpw = req.body.oldpw;
+  const newpw = req.body.newpw;
+
+  pool.query('UPDATE user SET password = ? WHERE id = ? AND password = ?', [newpw, userID, oldpw], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+      res.status(500).json({ "message": false });
+    } else {
+      console.log('비밀번호 변경 성공');
+      res.status(200).json({ "message": true });
+    }
+  });
+});
+
+app.post('/changeprofile', upload.single('file'),(req, res) => { //프로필 변경
+  const userID = req.body.id;
+  const file = req.file;
+  const filePath = `uploads/${req.file.filename}`;
+
+  if (!file) {
+    return res.status(400).send('No file uploaded');
+  }
+
+  console.log(userID, filePath);
+
+  pool.query('UPDATE user SET image = ? WHERE id = ?', [filePath, userID], (err, data) => {
+    if (err) {
+      console.log('실패');
+      console.error(err);
+      res.status(500).send('Database error');
+      return;
+    } else {
+      console.log('프로필 변경 성공');
+      res.sendFile(path.join(__dirname, filePath));
+    }
+  });
 });
 
 
