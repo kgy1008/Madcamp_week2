@@ -393,7 +393,8 @@ app.post('/deletepost', (req, res) => { //게시글 삭제
 });
 
 app.post('/myboardclass',(req,res)=>{ //내가 만든 게시판
-  const author = req.body.user_id;
+  const author = req.body.id;
+  console.log(author);
 
   pool.query('SELECT name FROM board WHERE creater = ?', [author], (err, data) => {
     if (err) {
@@ -558,8 +559,14 @@ app.post('/editnickname', (req, res) => { //닉네임 변경
   });
 });
 
+
+
+//여기서부터 수정 코드
+
 app.post('/getauthorimage', (req, res) => { //작성자 프로필 이미지 불러오기
   const authorID = req.body.id; // 작성자 ID
+  const userID = req.body.user_id; // 사용자 ID
+  const postID = req.body.post_id; // 게시글 ID
 
   const query = `
   SELECT user.image 
@@ -567,19 +574,140 @@ app.post('/getauthorimage', (req, res) => { //작성자 프로필 이미지 불�
   INNER JOIN posts 
   ON posts.author = user.id 
   WHERE posts.author= ?
-`;
-pool.query(query, [authorID], (err, results) => {
-  if (err){
-   res.status(500).send(err);
-  }
-  else{
-    console.log(results);
-   res.status(200).json(results[0]);
-  }
- });
+  `;
+  pool.query(query, [authorID], (err, results) => {
+    if (err){
+      res.status(500).send(err);
+    }
+    else{
+      // 추천 여부 확인 쿼리
+      const recommendQuery = `
+      SELECT post 
+      FROM recommend 
+      WHERE user = ?
+      `;
+      pool.query(recommendQuery, [userID], (err, recommendResults) => {
+        if (err) {
+          res.status(500).send(err);
+        } else {
+          const postIDNumber = parseInt(postID, 10);
+          // postID가 추천 목록에 있는지 확인
+          const isRecommended = recommendResults.some(recommend => parseInt(recommend.post, 10) === postIDNumber);
+          const responseData = {
+            ...results[0],
+            isRecommended: isRecommended // 추천 목록에 있으면 true, 없으면 false
+          };
+          res.status(200).json(responseData);
+        }
+      });
+    }
+  });
+});
+
+
+
+
+app.post('/getrecommend', (req, res) => { //추천수 개수 보내주기
+  const postID = req.body.id; // 게시글 ID
+
+  const query = `
+    SELECT count(*) as recommendcount
+    FROM recommend 
+    INNER JOIN posts 
+    ON recommend.post = posts._id 
+    WHERE recommend.post = ?
+  `;
+
+  pool.query(query, [postID], (err, results) => {
+    if (err){
+     res.status(500).send(err);
+    }
+    else{
+     res.status(200).json(results[0]);
+    }
+   });
 
 });
 
+app.post('/recommendpost', (req, res) => { // 추천 추가 및 삭제
+  const good = req.body.good; // 추천 눌렀는지 여부 -> true: 누름, false: 취소
+  const postID = req.body.post_id; // 게시글 ID
+  const userID = req.body.user_id; // 사용자 ID
+
+  if (good) { // 추천 수 증가
+    pool.query('INSERT INTO recommend (post, user) VALUES (?, ?)', [postID, userID], (err, data) => {
+      if (err) {
+        console.error('추천 추가 실패:', err);
+        res.status(500).json({ "message": "Error adding to favorites" });
+      } else {
+        console.log('추천 추가 성공');
+        res.status(200).json({ "message": true });
+      }
+    });
+  } else { // 즐겨찾기 삭제
+    pool.query('DELETE FROM recommend WHERE user = ? AND post = ?', [userID, postID], (err, data) => {
+      if (err) {
+        console.error('즐겨찾기 삭제 실패:', err);
+        res.status(500).json({ "message": "Error removing from favorites" });
+      } else {
+        console.log('즐겨찾기 삭제 성공');
+        res.status(200).json({ "message": true });
+      }
+    });
+  }
+});
+
+app.post('/rankingpost', (req, res) => { //추천수 순으로 게시글 목록
+  const query = `
+  SELECT p.*
+  FROM posts p
+  INNER JOIN (
+      SELECT post, COUNT(*) as count
+      FROM recommend
+      GROUP BY post
+      ORDER BY count DESC
+      LIMIT 5
+  ) as top_posts ON p._id = top_posts.post;`
+
+  pool.query(query, (err, results) => {
+    if (err){
+      res.status(500).send(err);
+    }
+    else{
+      res.status(200).json(results);
+    }
+  });
+});
+
+
+// 네이버 검색 API 예제 - 블로그 검색
+var client_id = 'E';
+var client_secret = '4';
+
+app.post('/search/blog', function (req, res) {
+  const query = req.body.query; // 쿼리 매개변수 사용
+  console.log(query);
+  var api_url = 'https://openapi.naver.com/v1/search/blog?display=15&query=' + encodeURI(query); // JSON 결과
+
+  var request = require('request');
+  var options = {
+      url: api_url,
+      headers: {'X-Naver-Client-Id':client_id, 'X-Naver-Client-Secret': client_secret}
+  };
+
+  request.get(options, function (error, response, body) {
+    if (!error && response.statusCode == 200) {
+      var responseBody = JSON.parse(body); // 응답 바디를 JSON 객체로 파싱
+      var items = responseBody.items; // 'items' 필드 추출
+
+      res.writeHead(200, {'Content-Type': 'text/json;charset=utf-8'});
+      res.end(JSON.stringify(items)); // 'items'만을 JSON 형태로 응답
+    } else {
+      res.status(response.statusCode).end();
+      console.error('Error:', error); // 보다 상세한 오류 로깅
+    }
+  });
+});
 
 
 app.listen(4000, () => {
