@@ -196,6 +196,8 @@ app.post('/checkedboardclass', (req, res) => { // 즐겨찾기 게시판
 app.post('/getcomments', (req, res) => { // 댓글 목록
   const selectedPostID = req.body._id;  // post의 기본키
 
+  console.log(selectedPostID);
+
   const query = `
     SELECT comment._id, comment.writer, comment.context, comment.writer_nickname, user.image 
     FROM comment 
@@ -209,12 +211,6 @@ app.post('/getcomments', (req, res) => { // 댓글 목록
       res.status(500).send(err);
     } else {
       try {
-        for (const comment of comments) {
-          // user.image가 NULL이 아닐 경우에만 인코딩을 진행합니다.
-          if (!comment.image) {
-            comment.image = "";
-          }
-        }
         res.status(200).json(comments);
       } catch (error) {
         console.error('File read error', error);
@@ -568,6 +564,8 @@ app.post('/getauthorimage', (req, res) => { //작성자 프로필 이미지 불�
   const userID = req.body.user_id; // 사용자 ID
   const postID = req.body.post_id; // 게시글 ID
 
+  console.log(authorID, userID, postID);
+
   const query = `
   SELECT user.image 
   FROM user
@@ -681,8 +679,7 @@ app.post('/rankingpost', (req, res) => { //추천수 순으로 게시글 목록
 
 
 // 네이버 검색 API 예제 - 블로그 검색
-var client_id = 'E';
-var client_secret = '4';
+
 
 app.post('/search/blog', function (req, res) {
   const query = req.body.query; // 쿼리 매개변수 사용
