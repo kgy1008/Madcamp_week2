@@ -677,11 +677,6 @@ app.post('/rankingpost', (req, res) => { //추천수 순으로 게시글 목록
   });
 });
 
-
-// 네이버 검색 API 예제 - 블로그 검색
-var client_id = 'EDATuZcdXoi_DlMa4Wtp';
-var client_secret = '4qte4QNPBF';
-
 app.post('/search/blog', function (req, res) {
   const query = req.body.query; // 쿼리 매개변수 사용
   console.log(query);
