@@ -1,6 +1,6 @@
 # 몰입 캠퍼스
 
-### KAIST MadCamp Week2
+> KAIST MadCamp Week2
 
 ## a. 개발 팀원
 
